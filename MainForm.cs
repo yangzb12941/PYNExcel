@@ -31,6 +31,7 @@ namespace PYNExcel
             {
                 file = dialog.FileName;
             }
+            this.fileNameTextBox.Text = file;
             readExcelTool = new ReadExcelTool(file);
             bindSheetNameToCheckedSheetListBox();
         }
