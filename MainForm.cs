@@ -1,21 +1,14 @@
 ﻿using Microsoft.Office.Interop.Excel;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-using static System.Windows.Forms.ListBox;
 
 namespace PYNExcel
 {
     public partial class pynForm : Form
     {
         private ReadExcelTool readExcelTool = null;//读excel
-        private WriteExcelTool writeExcelTool = null;//写excel
         private List<Ratio> ratioList = new List<Ratio>(8);//存放补贴比率
         private HashSet<String> dataSet = new HashSet<string>(8);//加入dataGridView中的数据过滤器
 
@@ -221,8 +214,16 @@ namespace PYNExcel
                     incrementalSubsidyAll += statisticalData.IncrementalSubsidy;//总增量补贴
                 }
             }
+            StatisticalData statisticalDataEnd = new StatisticalData();
+            statisticalDataEnd.CompanyName = "合计";
+            statisticalDataEnd.GoodsName = "/";
+            statisticalDataEnd.ClearedQuota = clearedQuotaAll;//已结关额度
+            statisticalDataEnd.CustomsClearance = customsClearanceAll;//清关中额度
+            statisticalDataEnd.CustomsTotal = customsTotalAll;//总额度
+            statisticalDataEnd.IncrementalSubsidy = incrementalSubsidyAll;//增量补贴
+            statisticalDatas.Add(statisticalDataEnd);
 
-
+            writeExcel(statisticalDatas);
         }
 
         private void checkedGoodsListBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -291,38 +292,15 @@ namespace PYNExcel
 
         private void writeExcel(List<StatisticalData> statisticalDatas) 
         {
-            //create new xls file
-            string file = "C:\\newdoc.xls";
-            Workbook workbook = new Workbook();
-            Worksheet worksheet = new Worksheet("First Sheet");
-            worksheet.Cells[0, 1] = new Cell((short)1);
-            worksheet.Cells[2, 0] = new Cell(9999999);
-            worksheet.Cells[3, 3] = new Cell((decimal)3.45);
-            worksheet.Cells[2, 2] = new Cell("Text string");
-            worksheet.Cells[2, 4] = new Cell("Second string");
-            worksheet.Cells[4, 0] = new Cell(32764.5, "#,##0.00");
-            worksheet.Cells[5, 1] = new Cell(DateTime.Now, @"YYYY\-MM\-DD");
-            worksheet.Cells.ColumnWidth[0, 1] = 3000;
-            workbook.Worksheets.Add(worksheet);
-            workbook.Save(file);
-            // open xls file
-            Workbook book = Workbook.Load(file);
-            Worksheet sheet = book.Worksheets[0];
-            // traverse cells
-            foreach (Pair<Pair<int, int>, Cell> cell in sheet.Cells)
+            WriteExcelTool writeExcelTool = new WriteExcelTool(statisticalDatas);
+            string fileName = writeExcelTool.writeExcel();
+            if (String.IsNullOrEmpty(fileName))
             {
-                dgvCells[cell.Left.Right, cell.Left.Left].Value = cell.Right.Value;
+                MessageBox.Show("Excel 创建失败!");
             }
-            // traverse rows by Index
-            for (int rowIndex = sheet.Cells.FirstRowIndex;
-      rowIndex <= sheet.Cells.LastRowIndex; rowIndex++)
+            else 
             {
-                Row row = sheet.Cells.GetRow(rowIndex);
-                for (int colIndex = row.FirstColIndex;
-      colIndex <= row.LastColIndex; colIndex++)
-                {
-                    Cell cell = row.GetCell(colIndex);
-                }
+                MessageBox.Show("Excel 创建成功:" + fileName);
             }
         }
     }
