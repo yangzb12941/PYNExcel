@@ -14,6 +14,9 @@ namespace PYNExcel
         //公司抬头
         private string companyName;
 
+        //清关类型
+        private string customstType;
+
         //已结关额度
         private double clearedQuota;
 
@@ -36,5 +39,6 @@ namespace PYNExcel
         public double CustomsTotal { get => customsTotal; set => customsTotal = value; }
         public double IncrementalSubsidy { get => incrementalSubsidy; set => incrementalSubsidy = value; }
         public double Ratio { get => ratio; set => ratio = value; }
+        public string CustomstType { get => customstType; set => customstType = value; }
     }
 }

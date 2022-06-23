@@ -1,6 +1,7 @@
 ﻿using Microsoft.Office.Interop.Excel;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Windows.Forms;
 
@@ -10,8 +11,9 @@ namespace PYNExcel
     {
         private ReadExcelTool readExcelTool = null;//读excel
         private List<Ratio> ratioList = new List<Ratio>(8);//存放补贴比率
-        private HashSet<String> dataSet = new HashSet<string>(8);//加入dataGridView中的数据过滤器
-
+        private HashSet<string> comCustomsType = new HashSet<string>(8);//公司-清关类型
+        private HashSet<string> dataGridViewValue = new HashSet<string>(8);//公司-清关类型
+        private Dictionary<string,int> companyNameDic = new Dictionary<string, int>(8);//checkListBox 当前已有的公司名称
         public pynForm()
         {
             InitializeComponent();
@@ -30,6 +32,11 @@ namespace PYNExcel
             if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 file = dialog.FileName;
+            }
+            else 
+            {
+                MessageBox.Show("请选择excel文件!");
+                return;
             }
             this.fileNameTextBox.Text = file;
             readExcelTool = new ReadExcelTool(file);
@@ -73,7 +80,13 @@ namespace PYNExcel
         private void goodsBindToCheckedGoodsListBox(List<string> sheetNameList) 
         {
             this.checkedGoodsListBox.Items.Clear();
-            HashSet<string> goodsNames = new HashSet<string>();
+            //清楚列表
+            while (this.dataGridView.Rows.Count > 1)
+            {
+                this.dataGridView.Rows.RemoveAt(1);
+            }
+            //公司-产品
+            HashSet<string> goodsNames = new HashSet<string>(32);
             for (int i = 0; i < sheetNameList.Count; i++) 
             {
                 Worksheet worksheet = readExcelTool.getWorksheet(sheetNameList[i]);
@@ -87,11 +100,25 @@ namespace PYNExcel
                     string cellAValue = ((Range)worksheet.Cells[rowsCount,"A"]).Text.ToString();
                     //读取第A\H列
                     string cellHValue = ((Range)worksheet.Cells[rowsCount, "H"]).Text.ToString();
+                    //清关类型
+                    string cellBOValue = ((Range)worksheet.Cells[rowsCount, "BO"]).Text.ToString();
                     if (String.IsNullOrWhiteSpace(cellHValue)) 
                     {
                         continue;
                     }
+                    //公司-品种
                     goodsNames.Add(cellAValue + "-" + cellHValue);
+                    string keyType = cellAValue + "-" + cellBOValue;
+                    if (!comCustomsType.Contains(keyType))
+                    {
+                        //公司-清关类型
+                        comCustomsType.Add(keyType);
+                        Ratio ratio = new Ratio();
+                        ratio.CompanyName = cellAValue;
+                        ratio.CustomstType = cellBOValue;
+                        //被勾选
+                        ratioList.Add(ratio);//存放补贴比率
+                    }
                 }
             }
 
@@ -105,37 +132,28 @@ namespace PYNExcel
         {
             //勾选了物料之后，根据物料的公司抬头、物料名称，获取对应的提单金额
             int checkCount = this.checkedGoodsListBox.CheckedItems.Count;
-            Dictionary<String,List < CompanyGoods >> keyValues = new Dictionary<String, List < CompanyGoods>>(checkCount);
+            List<CompanyGoods> companyGoodsList = new List<CompanyGoods>(64);
             for (int i = 0; i < checkCount; i++)
             {
-                List<CompanyGoods> companyGoodsList = new List<CompanyGoods>(checkCount);
-
                 //获取已选择的公司-物料
                 string comGoods = this.checkedGoodsListBox.CheckedItems[i].ToString();
-
                 //公司抬头名称
                 string companyName = comGoods.Split('-')[0];
                 //国别&品种
                 string goodName = comGoods.Split('-')[1];
-
                 int checkSheetCount = this.checkedSheetListBox.CheckedItems.Count;
-                List<string> sheetNameList = new List<string>(checkSheetCount);
+
                 for (int iSheet = 0; iSheet < checkSheetCount; iSheet++)
                 {
                     string sheetName = this.checkedSheetListBox.CheckedItems[iSheet].ToString();
                     List<CompanyGoods> companyGoods = getCompanyGoods(companyName, goodName, sheetName);
-                    if (keyValues.ContainsKey(comGoods))
+                    if (null != companyGoods && companyGoods.Any()) 
                     {
-                        List<CompanyGoods> companyGoodsAll = keyValues[comGoods];
-                        companyGoodsAll.AddRange(companyGoods);
-                    }
-                    else
-                    {
-                        keyValues.Add(comGoods, companyGoods);
+                        companyGoodsList.AddRange(companyGoods);
                     }
                 }
             }
-            calGoodsUSD(keyValues);
+            calGoodsUSD(companyGoodsList);
         }
 
         private List<CompanyGoods> getCompanyGoods(string companyName, string goodName,string sheetName) 
@@ -152,6 +170,9 @@ namespace PYNExcel
                 string cellAValue = ((Range)worksheet.Cells[rowsCount, "A"]).Text.ToString();
                 //读取第A\H列
                 string cellHValue = ((Range)worksheet.Cells[rowsCount, "H"]).Text.ToString();
+
+                //读取第BO列-清关类型
+                string cellBOValue = ((Range)worksheet.Cells[rowsCount, "BO"]).Text.ToString();
                 if (cellAValue.Equals(companyName) && cellHValue.Equals(goodName))
                 {
                     //读取第R列提单金额(USD)
@@ -159,6 +180,7 @@ namespace PYNExcel
                     CompanyGoods companyGood = new CompanyGoods();
                     companyGood.CompanyName = companyName;
                     companyGood.GoodsName = goodName;
+                    companyGood.CustomstType = cellBOValue;
                     companyGood.Usd = Double.Parse(cellRValue);
                     companyGood.IsCleared = isCleared;
                     companyGoods.Add(companyGood);
@@ -167,9 +189,57 @@ namespace PYNExcel
             return companyGoods;
         }
 
-        private void calGoodsUSD(Dictionary<String, List<CompanyGoods>> keyValues) 
+        private void calGoodsUSD(List<CompanyGoods> companyGoodsList)
         {
-            List<StatisticalData> statisticalDatas = new List<StatisticalData>(keyValues.Count);
+            Dictionary<string,StatisticalData> statisticalDatas = new Dictionary<string,StatisticalData>(8);
+            foreach (CompanyGoods cGoodsItem in companyGoodsList)
+            {
+                string key = cGoodsItem.CompanyName + "-" + cGoodsItem.CustomstType + "-" + cGoodsItem.GoodsName;
+                if (statisticalDatas.ContainsKey(key))
+                {
+                    StatisticalData sData = statisticalDatas[key];
+                    if (cGoodsItem.IsCleared)
+                    {
+                        sData.ClearedQuota += cGoodsItem.Usd;
+                    }
+                    else
+                    {
+                        sData.CustomsClearance += cGoodsItem.Usd;
+                    }
+                    sData.CustomsTotal += cGoodsItem.Usd;
+                    sData.IncrementalSubsidy = 0d;
+                }
+                else 
+                {
+                    StatisticalData sData = new StatisticalData();
+                    sData.CompanyName = cGoodsItem.CompanyName;
+                    sData.GoodsName = cGoodsItem.GoodsName;
+                    sData.CustomstType = cGoodsItem.CustomstType;
+                    if (cGoodsItem.IsCleared)
+                    {
+                        sData.ClearedQuota = cGoodsItem.Usd;
+                        sData.CustomsClearance = 0d;
+                    }
+                    else 
+                    {
+                        sData.CustomsClearance = cGoodsItem.Usd;
+                        sData.ClearedQuota = 0d;
+                    }
+                    sData.CustomsTotal += cGoodsItem.Usd;
+                    sData.IncrementalSubsidy = 0d;
+                    Ratio ratio = ratioList.Find(item => item.CompanyName.Equals(cGoodsItem.CompanyName) && item.CustomstType.Equals(cGoodsItem.CustomstType));//获取补贴比率对象
+                    sData.Ratio = ratio.RatioValue;
+                    statisticalDatas.Add(key, sData);
+                }
+            }
+            calValue(statisticalDatas);
+        }
+
+        private void calValue(Dictionary<string, StatisticalData> statisticalDatas)
+        {
+
+            List<StatisticalData> statisticalDataList = new List<StatisticalData>(statisticalDatas.Count);
+
             //已结关额度
             double clearedQuotaAll = 0.0d;
             //清关中额度
@@ -179,114 +249,48 @@ namespace PYNExcel
             //增量补贴
             double incrementalSubsidyAll = 0.0d;
 
-            foreach (KeyValuePair<String, List<CompanyGoods>> entry in keyValues )
+            foreach (var entry in statisticalDatas)
             {
                 string key = entry.Key;
-                List<CompanyGoods> companyGoodsList = entry.Value;
-                if (null != companyGoodsList && companyGoodsList.Any()) 
-                {
-                    StatisticalData statisticalData = new StatisticalData();
-                    statisticalData.CompanyName = key.Split('-')[0];
-                    statisticalData.GoodsName = key.Split('-')[1];
-                    double clearedQuota = 0d;//已结关额度
-                    double customsClearance = 0d;//清关中额度
-                    foreach (CompanyGoods cGoods in companyGoodsList) 
-                    {
-                        if (cGoods.IsCleared) 
-                        {
-                            clearedQuota += cGoods.Usd;
-                        } 
-                        else 
-                        {
-                            customsClearance+= cGoods.Usd;
-                        }
-                    }
-                    statisticalData.ClearedQuota = clearedQuota;//已结关额度
-                    statisticalData.CustomsClearance = customsClearance;//清关中额度
-                    statisticalData.CustomsTotal = clearedQuota - customsClearance;//总额度
-                    Ratio ratio = ratioList.Find(item => item.CompanyName.Equals(statisticalData.CompanyName) && item.GoodsName.Equals(statisticalData.GoodsName));//获取补贴比率对象
-                    statisticalData.IncrementalSubsidy = statisticalData.CustomsTotal * ratio.RatioValue;//增量补贴
-                    statisticalData.Ratio = ratio.RatioValue;//补贴率
-                    statisticalDatas.Add(statisticalData);
+                StatisticalData aData = entry.Value;
+                aData.IncrementalSubsidy = aData.CustomsTotal * aData.Ratio;
 
-                    clearedQuotaAll += clearedQuota;//总已结关额度
-                    customsClearanceAll += customsClearance;//总清关中额度
-                    customsTotalAll += statisticalData.CustomsTotal; //总额度
-                    incrementalSubsidyAll += statisticalData.IncrementalSubsidy;//总增量补贴
-                }
+                clearedQuotaAll += aData.ClearedQuota;
+                customsClearanceAll += aData.CustomsClearance;
+                customsTotalAll += aData.CustomsTotal;
+                incrementalSubsidyAll += aData.IncrementalSubsidy;
+                statisticalDataList.Add(aData);
             }
             StatisticalData statisticalDataEnd = new StatisticalData();
             statisticalDataEnd.CompanyName = "合计";
             statisticalDataEnd.GoodsName = "/";
+            statisticalDataEnd.CustomstType = "/";
             statisticalDataEnd.ClearedQuota = clearedQuotaAll;//已结关额度
             statisticalDataEnd.CustomsClearance = customsClearanceAll;//清关中额度
             statisticalDataEnd.CustomsTotal = customsTotalAll;//总额度
             statisticalDataEnd.IncrementalSubsidy = incrementalSubsidyAll;//增量补贴
-            statisticalDatas.Add(statisticalDataEnd);
-
-            writeExcel(statisticalDatas);
-        }
-
-        private void checkedGoodsListBox_SelectedIndexChanged(object sender, EventArgs e)
-        {           
-            CheckedListBox checkedListBox = (CheckedListBox)sender;
-            int index = checkedListBox.SelectedIndex;//idx就是当前的选中项序号
-            string value = checkedListBox.GetItemText(checkedListBox.Items[index]);
-            if (checkedListBox.GetItemChecked(index))
-            {
-                Ratio ratio = new Ratio();
-                ratio.CompanyName = value.Split('-')[0];
-                ratio.GoodsName = value.Split('-')[1];
-                //被勾选
-                ratioList.Add(ratio);//存放补贴比率
-                int dataIndex = this.dataGridView.Rows.Add();
-                this.dataGridView.Rows[dataIndex].Cells[0].Value = ratio.CompanyName;//公司抬头
-                this.dataGridView.Rows[dataIndex].Cells[1].Value = ratio.GoodsName;//品种
-                if (dataSet.Contains(value))
-                {
-                    return;
-                }
-                else 
-                {
-                    dataSet.Add(value);//存放补贴比率在dataGridView中第几行
-                }
-            }
-            else 
-            {
-                //不被勾选
-                string companyName = value.Split('-')[0];
-                string goodsName = value.Split('-')[1];
-                //被勾选
-                ratioList.RemoveAll(item=> item.CompanyName.Equals(companyName) && item.GoodsName.Equals(goodsName));//移除补贴比率对象
-                foreach (DataGridViewRow rowItem in this.dataGridView.Rows)
-                { 
-                    string dataCompany = rowItem.Cells[0].Value.ToString();
-                    string dataGood = rowItem.Cells[1].Value.ToString();
-                    if (companyName.Equals(dataCompany) && goodsName.Equals(dataGood))
-                    {
-                        this.dataGridView.Rows.Remove(rowItem);
-                    }
-                }
-            }
+            statisticalDataList.Add(statisticalDataEnd);
+            writeExcel(statisticalDataList);
         }
 
         private void dataGridView_CellEndEdit(object sender, DataGridViewCellEventArgs e)
         {
             //编辑补贴率
             DataGridViewRow rowItem = this.dataGridView.Rows[e.RowIndex];
-            string ratioValue = rowItem.Cells[2].Value.ToString();
-            if (string.IsNullOrEmpty(ratioValue))
+            
+            if (null != rowItem.Cells[2].Value)
             {
+                string ratioValue = rowItem.Cells[2].Value.ToString();
                 string dataCompany = rowItem.Cells[0].Value.ToString();
-                string dataGood = rowItem.Cells[1].Value.ToString();
-                Ratio ratio = ratioList.Find(item => item.CompanyName.Equals(dataCompany) && item.GoodsName.Equals(dataGood));//获取补贴比率对象
+                string customstType = rowItem.Cells[1].Value.ToString();
+                Ratio ratio = ratioList.Find(item => item.CompanyName.Equals(dataCompany) && item.CustomstType.Equals(customstType));//获取补贴比率对象
                 ratio.RatioValue = Double.Parse(ratioValue);
             }
             else 
             {
                 string dataCompany = rowItem.Cells[0].Value.ToString();
-                string dataGood = rowItem.Cells[1].Value.ToString();
-                Ratio ratio = ratioList.Find(item => item.CompanyName.Equals(dataCompany) && item.GoodsName.Equals(dataGood));//获取补贴比率对象
+                string customstType = rowItem.Cells[1].Value.ToString();
+                Ratio ratio = ratioList.Find(item => item.CompanyName.Equals(dataCompany) && item.CustomstType.Equals(customstType));//获取补贴比率对象
                 ratio.RatioValue = 1.0d;
             }
         }
@@ -302,6 +306,75 @@ namespace PYNExcel
             else 
             {
                 MessageBox.Show("Excel 创建成功:" + fileName);
+            }
+        }
+
+        private void checkedGoodsListBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            CheckedListBox checkedListBox = (CheckedListBox)sender;
+            int index = checkedListBox.SelectedIndex;//idx就是当前的选中项序号
+            string value = checkedListBox.GetItemText(checkedListBox.Items[index]);
+            if (checkedListBox.GetItemChecked(index))
+            {
+                string companyName = value.Split('-')[0];
+                if (companyNameDic.ContainsKey(companyName))
+                {
+                    companyNameDic[companyName]++;
+                }
+                else 
+                {
+                    companyNameDic.Add(companyName, 1);
+                }
+                foreach (Ratio ratio in ratioList)
+                {
+                    if (companyName.Equals(ratio.CompanyName))
+                    {
+                        string key = ratio.CompanyName + "-" + ratio.CustomstType;
+                        if (dataGridViewValue.Contains(key)) 
+                        {
+                            continue;
+                        }
+                        dataGridViewValue.Add(key);
+                        int dataIndex = this.dataGridView.Rows.Add();
+                        this.dataGridView.Rows[dataIndex].Cells[0].Value = ratio.CompanyName;//公司抬头
+                        this.dataGridView.Rows[dataIndex].Cells[1].Value = ratio.CustomstType;//清关类型
+                    }
+                    else 
+                    {
+                        continue;
+                    }
+                }
+            }
+            else
+            {
+                //不被勾选
+                string companyName = value.Split('-')[0];
+                if (companyNameDic.ContainsKey(companyName))
+                {
+                   int timesCount = --companyNameDic[companyName];
+                    if (timesCount <= 0)
+                    {
+                        companyNameDic.Remove(companyName);
+                        int rowount = dataGridView.Rows.Count;//得到总行数
+                        List<DataGridViewRow> delRows = new List<DataGridViewRow>(rowount);
+                        for (int i =0; i < rowount; i++)
+                        {
+                            string companyNameDGV = dataGridView.Rows[i].Cells[0].Value.ToString();
+                            if (companyNameDGV.Equals(companyName)) 
+                            {
+                                var rowItem = dataGridView.Rows[i];
+                                delRows.Add(rowItem);
+                            }
+                        }
+
+                        foreach (DataGridViewRow dgvr in delRows)
+                        {
+                            dataGridView.Rows.Remove(dgvr);
+                        }
+
+                        dataGridViewValue.RemoveWhere(s => { return s.Split('-')[0].Equals(companyName);});
+                    }
+                }
             }
         }
     }

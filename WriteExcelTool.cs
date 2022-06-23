@@ -36,7 +36,8 @@ namespace PYNExcel
             xlWorkSheet.Cells[1, 4] = "清关中额度";
             xlWorkSheet.Cells[1, 5] = "总额度";
             xlWorkSheet.Cells[1, 6] = "增量补贴（万元）";
-            for(int index = 0;index < data.Count;index++)
+            xlWorkSheet.Cells[1, 7] = "清关类型";
+            for (int index = 0;index < data.Count;index++)
             {
                 xlWorkSheet.Cells[index+2, 1] = data[index].CompanyName;
                 xlWorkSheet.Cells[index + 2, 2] = data[index].GoodsName;
@@ -44,6 +45,7 @@ namespace PYNExcel
                 xlWorkSheet.Cells[index + 2, 4] = data[index].CustomsClearance;
                 xlWorkSheet.Cells[index + 2, 5] = data[index].CustomsTotal;
                 xlWorkSheet.Cells[index + 2, 6] = data[index].IncrementalSubsidy;
+                xlWorkSheet.Cells[index + 2, 7] = data[index].CustomstType;
             }
             fileName = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + Guid.NewGuid().ToString() + ".xlsx";
             xlWorkBook.SaveAs(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)+ Guid.NewGuid().ToString()+ ".xlsx", Excel.XlFileFormat.xlWorkbookNormal, misValue, misValue, misValue, misValue, Excel.XlSaveAsAccessMode.xlExclusive, misValue, misValue, misValue, misValue, misValue);

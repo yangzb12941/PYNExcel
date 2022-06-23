@@ -9,11 +9,11 @@ namespace PYNExcel
     internal class Ratio
     {
         private string companyName;
-        private string goodsName;
+        private string customstType;
         private double ratioValue;
 
         public string CompanyName { get => companyName; set => companyName = value; }
-        public string GoodsName { get => goodsName; set => goodsName = value; }
+        public string CustomstType { get => customstType; set => customstType = value; }
         public double RatioValue { get => ratioValue; set => ratioValue = value; }
     }
 }

@@ -14,6 +14,8 @@ namespace PYNExcel
         private string goodsName;
         //提单金额
         private double usd;
+        //清关类型
+        private string customstType;
         //是否已关结
         private Boolean isCleared;
 
@@ -21,5 +23,6 @@ namespace PYNExcel
         public string GoodsName { get => goodsName; set => goodsName = value; }
         public double Usd { get => usd; set => usd = value; }
         public bool IsCleared { get => isCleared; set => isCleared = value; }
+        public string CustomstType { get => customstType; set => customstType = value; }
     }
 }
